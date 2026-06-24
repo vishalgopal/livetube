@@ -1,0 +1,457 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+}
+
+enum ChannelStatus {
+  CONNECTED
+  DISCONNECTED
+  TOKEN_EXPIRED
+  ERROR
+}
+
+enum MediaType {
+  VIDEO
+  AUDIO
+  IMAGE
+}
+
+enum MediaStatus {
+  READY
+  PROCESSING
+  ARCHIVED
+  FAILED
+  DELETED
+}
+
+enum TemplateCategory {
+  DEVOTIONAL
+  MEDITATION
+  HEALING
+  SLEEP
+  STUDY
+  AMBIENT
+  CUSTOM
+}
+
+enum UploadStatus {
+  DRAFT
+  QUEUED
+  UPLOADING
+  PROCESSING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum PlaylistType {
+  SINGLE_RUN
+  LOOP
+}
+
+enum PlaylistStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum StreamStatus {
+  SCHEDULED
+  STARTING
+  LIVE
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum NotificationLevel {
+  INFO
+  WARNING
+  ERROR
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  DISMISSED
+}
+
+enum CommentStatus {
+  NEW
+  UNANSWERED
+  REPLIED
+  APPROVED
+  HIDDEN
+  DELETED
+  SPAM
+}
+
+enum SystemLogLevel {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String
+  role          UserRole       @default(OPERATOR)
+  passwordHash  String?
+  isActive      Boolean        @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  uploads       YouTubeUpload[] @relation("UploadCreatedBy")
+  streams       Stream[]       @relation("StreamCreatedBy")
+  notifications Notification[]
+  systemLogs    SystemLog[]
+
+  @@map("users")
+}
+
+model Channel {
+  id                    String          @id @default(cuid())
+  name                  String
+  slug                  String          @unique
+  youtubeChannelId      String          @unique
+  status                ChannelStatus   @default(DISCONNECTED)
+  defaultStreamKey      String?
+  defaultPrivacy        String?
+  defaultCategoryId     String?
+  defaultTags           String[]
+  uploadSettings        Json?
+  oauthAccessToken      String?
+  oauthRefreshToken     String?
+  oauthScope            String?
+  oauthTokenExpiresAt   DateTime?
+  lastSyncedAt          DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  folders               Folder[]
+  mediaItems            Media[]
+  templates             AiTemplate[]
+  uploads               YouTubeUpload[]
+  playlists             Playlist[]
+  streamPresets         StreamPreset[]
+  streams               Stream[]
+  comments              Comment[]
+  notifications         Notification[]
+
+  @@index([status])
+  @@map("channels")
+}
+
+model Folder {
+  id          String    @id @default(cuid())
+  channelId   String
+  parentId    String?
+  name        String
+  slug        String
+  path        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  channel     Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  parent      Folder?   @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Folder[]  @relation("FolderTree")
+  mediaItems  Media[]
+
+  @@unique([channelId, path])
+  @@unique([channelId, parentId, slug])
+  @@index([channelId, parentId])
+  @@map("folders")
+}
+
+model Media {
+  id                  String       @id @default(cuid())
+  channelId           String
+  folderId            String?
+  type                MediaType
+  status              MediaStatus  @default(READY)
+  title               String
+  originalFilename    String
+  storagePath         String       @unique
+  mimeType            String?
+  extension           String?
+  sizeBytes           BigInt
+  durationSeconds     Int?
+  width               Int?
+  height              Int?
+  checksumSha256      String?
+  thumbnailPath       String?
+  description         String?
+  tags                String[]
+  uploadedAt          DateTime     @default(now())
+  archivedAt          DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  channel             Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  folder              Folder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploadJobs          YouTubeUpload[] @relation("UploadMedia")
+  uploadThumbnails    YouTubeUpload[] @relation("UploadThumbnail")
+  playlistItems       PlaylistItem[]
+  presetThumbnails    StreamPreset[]  @relation("PresetThumbnail")
+  activeStreams       Stream[]        @relation("ActiveStreamMedia")
+  ffmpegLogs          FfmpegLog[]
+
+  @@index([channelId, folderId])
+  @@index([type, status])
+  @@index([title])
+  @@map("media")
+}
+
+model AiTemplate {
+  id                    String           @id @default(cuid())
+  channelId             String?
+  name                  String
+  slug                  String
+  category              TemplateCategory @default(CUSTOM)
+  prompt                String
+  descriptionStructure  String?
+  ctaText               String?
+  defaultTags           String[]
+  defaultHashtags       String[]
+  isFavorite            Boolean          @default(false)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  channel               Channel?         @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  uploads               YouTubeUpload[]
+  streamPresets         StreamPreset[]
+
+  @@unique([channelId, slug])
+  @@index([category, isFavorite])
+  @@map("templates")
+}
+
+model YouTubeUpload {
+  id                    String        @id @default(cuid())
+  channelId             String
+  mediaId               String
+  templateId            String?
+  createdById           String?
+  youtubeVideoId        String?       @unique
+  title                 String
+  description           String
+  tags                  String[]
+  hashtags              String[]
+  pinnedComment         String?
+  thumbnailMediaId      String?
+  privacy               String
+  categoryId            String?
+  scheduledFor          DateTime?
+  publishedAt           DateTime?
+  status                UploadStatus  @default(DRAFT)
+  failureReason         String?
+  metadataSource        Json?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  channel               Channel       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  media                 Media         @relation("UploadMedia", fields: [mediaId], references: [id], onDelete: Restrict)
+  template              AiTemplate?   @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdBy             User?         @relation("UploadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  thumbnailMedia        Media?        @relation("UploadThumbnail", fields: [thumbnailMediaId], references: [id], onDelete: SetNull)
+  playlistItems         PlaylistItem[]
+  comments              Comment[]
+
+  @@index([channelId, status])
+  @@index([scheduledFor])
+  @@map("youtube_uploads")
+}
+
+model Playlist {
+  id            String         @id @default(cuid())
+  channelId     String
+  name          String
+  slug          String
+  description   String?
+  type          PlaylistType   @default(SINGLE_RUN)
+  status        PlaylistStatus @default(ACTIVE)
+  archivedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  channel       Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  items         PlaylistItem[]
+  streamPresets StreamPreset[]
+  streams       Stream[]
+
+  @@unique([channelId, slug])
+  @@index([channelId, status])
+  @@map("playlists")
+}
+
+model PlaylistItem {
+  id              String          @id @default(cuid())
+  playlistId      String
+  mediaId         String?
+  youtubeUploadId String?
+  position        Int
+  startOffsetSec  Int?
+  endOffsetSec    Int?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  playlist        Playlist        @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  media           Media?          @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  youtubeUpload   YouTubeUpload?  @relation(fields: [youtubeUploadId], references: [id], onDelete: SetNull)
+
+  @@unique([playlistId, position])
+  @@index([mediaId])
+  @@index([youtubeUploadId])
+  @@map("playlist_items")
+}
+
+model StreamPreset {
+  id                    String       @id @default(cuid())
+  channelId             String
+  playlistId            String?
+  templateId            String?
+  thumbnailMediaId      String?
+  name                  String
+  slug                  String
+  titleTemplate         String?
+  descriptionTemplate   String?
+  startTimeLocal        String?
+  endTimeLocal          String?
+  recurrenceRule        String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  channel               Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  playlist              Playlist?    @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+  template              AiTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  thumbnailMedia        Media?       @relation("PresetThumbnail", fields: [thumbnailMediaId], references: [id], onDelete: SetNull)
+  streams               Stream[]
+
+  @@unique([channelId, slug])
+  @@map("stream_presets")
+}
+
+model Stream {
+  id                    String       @id @default(cuid())
+  channelId             String
+  playlistId            String?
+  presetId              String?
+  createdById           String?
+  title                 String
+  description           String?
+  youtubeBroadcastId    String?      @unique
+  youtubeLiveStreamId   String?      @unique
+  streamKeyOverride     String?
+  scheduledStartAt      DateTime
+  scheduledEndAt        DateTime?
+  actualStartAt         DateTime?
+  actualEndAt           DateTime?
+  status                StreamStatus @default(SCHEDULED)
+  ffmpegCommand         String?
+  autoRecoveryEnabled   Boolean      @default(true)
+  recurrenceRule        String?
+  lastHeartbeatAt       DateTime?
+  currentMediaId        String?
+  failureReason         String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  channel               Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  playlist              Playlist?    @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+  preset                StreamPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  createdBy             User?        @relation("StreamCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  currentMedia          Media?       @relation("ActiveStreamMedia", fields: [currentMediaId], references: [id], onDelete: SetNull)
+  ffmpegLogs            FfmpegLog[]
+
+  @@index([channelId, status, scheduledStartAt])
+  @@index([presetId])
+  @@map("streams")
+}
+
+model Comment {
+  id                 String        @id @default(cuid())
+  channelId          String
+  youtubeUploadId    String?
+  externalCommentId  String        @unique
+  authorChannelId    String?
+  authorDisplayName  String
+  bodyText           String
+  publishedAt        DateTime
+  repliedAt          DateTime?
+  approvedAt         DateTime?
+  hiddenAt           DateTime?
+  deletedAt          DateTime?
+  status             CommentStatus @default(NEW)
+  isSpam             Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  channel            Channel       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  youtubeUpload      YouTubeUpload? @relation(fields: [youtubeUploadId], references: [id], onDelete: SetNull)
+
+  @@index([channelId, status])
+  @@index([publishedAt])
+  @@map("comments")
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  userId      String?
+  channelId   String?
+  title       String
+  message     String
+  level       NotificationLevel  @default(INFO)
+  status      NotificationStatus @default(UNREAD)
+  sourceType  String?
+  sourceId    String?
+  createdAt   DateTime           @default(now())
+  readAt      DateTime?
+  dismissedAt DateTime?
+  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  channel     Channel?           @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([channelId, level])
+  @@map("notifications")
+}
+
+model SystemLog {
+  id          String         @id @default(cuid())
+  userId      String?
+  level       SystemLogLevel @default(INFO)
+  action      String
+  entityType  String?
+  entityId    String?
+  message     String
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime       @default(now())
+  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([level, createdAt])
+  @@index([entityType, entityId])
+  @@map("system_logs")
+}
+
+model FfmpegLog {
+  id                String    @id @default(cuid())
+  streamId          String?
+  mediaId           String?
+  eventType         String
+  command           String?
+  message           String
+  errorDetails      String?
+  bitrateKbps       Int?
+  droppedFrames     Int?
+  cpuUsagePercent   Float?
+  memoryUsageMb     Float?
+  uptimeSeconds     Int?
+  loggedAt          DateTime  @default(now())
+  stream            Stream?   @relation(fields: [streamId], references: [id], onDelete: SetNull)
+  media             Media?    @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+
+  @@index([streamId, loggedAt])
+  @@index([eventType, loggedAt])
+  @@map("ffmpeg_logs")
+}
