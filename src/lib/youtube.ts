@@ -163,7 +163,11 @@ export async function createYoutubeLiveStream(
   channelId: string,
   title: string,
   description: string,
-  scheduledStart: Date
+  scheduledStart: Date,
+  options?: {
+    categoryId?: string;
+    thumbnailPath?: string | null;
+  }
 ) {
   const youtube = await getYoutubeClient(channelId);
 
@@ -203,17 +207,57 @@ export async function createYoutubeLiveStream(
   });
 
   // 3. Bind Broadcast to Stream
-  const bindRes = await youtube.liveBroadcasts.bind({
+  await youtube.liveBroadcasts.bind({
+    part: ["id", "contentDetails"],
     id: broadcastRes.data.id!,
     streamId: streamRes.data.id!,
   });
 
+  const broadcastId = broadcastRes.data.id!;
+  const categoryId = options?.categoryId || "10";
+
+  await youtube.videos.update({
+    part: ["snippet", "status"],
+    requestBody: {
+      id: broadcastId,
+      snippet: {
+        title,
+        description,
+        categoryId,
+      },
+      status: {
+        privacyStatus: "public",
+        selfDeclaredMadeForKids: false,
+      },
+    },
+  });
+
+  if (options?.thumbnailPath) {
+    await uploadYoutubeThumbnail(channelId, broadcastId, options.thumbnailPath);
+  }
+
   return {
-    broadcastId: broadcastRes.data.id!,
+    broadcastId,
     liveStreamId: streamRes.data.id!,
     rtmpUrl: streamRes.data.cdn?.ingestionInfo?.ingestionAddress!,
     streamKey: streamRes.data.cdn?.ingestionInfo?.streamName!,
   };
+}
+
+/**
+ * Transition a YouTube live broadcast to complete.
+ */
+export async function completeYoutubeLiveBroadcast(
+  channelId: string,
+  broadcastId: string
+) {
+  const youtube = await getYoutubeClient(channelId);
+
+  return youtube.liveBroadcasts.transition({
+    part: ["id", "status"],
+    broadcastStatus: "complete",
+    id: broadcastId,
+  });
 }
 
 /**

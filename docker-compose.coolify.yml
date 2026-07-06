@@ -1,0 +1,59 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      APP_ROLE: web
+      RUN_MIGRATIONS: "true"
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+      ALLOW_PUBLIC_SIGNUP: ${ALLOW_PUBLIC_SIGNUP:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      YOUTUBE_OAUTH_REDIRECT_URI: ${YOUTUBE_OAUTH_REDIRECT_URI}
+      YOUTUBE_OAUTH_SCOPES: ${YOUTUBE_OAUTH_SCOPES}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      STREAM_EXECUTION_MODE: ${STREAM_EXECUTION_MODE:-real}
+      STREAM_RTMP_BASE_URL: ${STREAM_RTMP_BASE_URL}
+      FFMPEG_PATH: ${FFMPEG_PATH:-ffmpeg}
+      STREAM_WORKER_POLL_MS: ${STREAM_WORKER_POLL_MS:-15000}
+      STREAM_HEARTBEAT_STALE_MS: ${STREAM_HEARTBEAT_STALE_MS:-45000}
+      STREAM_CLAIM_TIMEOUT_MS: ${STREAM_CLAIM_TIMEOUT_MS:-120000}
+    volumes:
+      - app_storage:/app/storage
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      APP_ROLE: worker
+      DATABASE_URL: ${DATABASE_URL}
+      STREAM_EXECUTION_MODE: ${STREAM_EXECUTION_MODE:-real}
+      STREAM_RTMP_BASE_URL: ${STREAM_RTMP_BASE_URL}
+      FFMPEG_PATH: ${FFMPEG_PATH:-ffmpeg}
+      STREAM_WORKER_POLL_MS: ${STREAM_WORKER_POLL_MS:-15000}
+      STREAM_HEARTBEAT_STALE_MS: ${STREAM_HEARTBEAT_STALE_MS:-45000}
+      STREAM_CLAIM_TIMEOUT_MS: ${STREAM_CLAIM_TIMEOUT_MS:-120000}
+    volumes:
+      - app_storage:/app/storage
+    restart: unless-stopped
+    depends_on:
+      - web
+
+volumes:
+  app_storage:

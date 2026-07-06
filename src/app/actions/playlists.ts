@@ -1,6 +1,13 @@
 "use server";
 
 import { db } from "@/lib/db";
+import {
+  assertSameChannel,
+  requireChannelById,
+  requireMediaById,
+  requirePlaylistById,
+  requirePlaylistItemById,
+} from "@/lib/auth-guard";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -13,6 +20,7 @@ export async function createPlaylistAction(
   description?: string
 ) {
   try {
+    await requireChannelById(channelId);
     const slug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
     
     await db.playlist.create({
@@ -38,6 +46,10 @@ export async function createPlaylistAction(
  */
 export async function addPlaylistItemAction(playlistId: string, mediaId: string) {
   try {
+    const playlist = await requirePlaylistById(playlistId);
+    const media = await requireMediaById(mediaId);
+    assertSameChannel(media.channelId, playlist.channelId, "Media");
+
     // Determine the next position
     const currentItemsCount = await db.playlistItem.count({
       where: { playlistId },
@@ -63,11 +75,11 @@ export async function addPlaylistItemAction(playlistId: string, mediaId: string)
  */
 export async function removePlaylistItemAction(playlistId: string, itemId: string) {
   try {
-    const deletedItem = await db.playlistItem.findUnique({
-      where: { id: itemId },
-    });
-
-    if (!deletedItem) return;
+    const playlist = await requirePlaylistById(playlistId);
+    const deletedItem = await requirePlaylistItemById(itemId);
+    if (deletedItem.playlistId !== playlist.id) {
+      throw new Error("Playlist item does not belong to the selected playlist.");
+    }
 
     await db.playlistItem.delete({
       where: { id: itemId },
@@ -98,6 +110,18 @@ export async function removePlaylistItemAction(playlistId: string, itemId: strin
  */
 export async function reorderPlaylistItemsAction(playlistId: string, orderedItemIds: string[]) {
   try {
+    await requirePlaylistById(playlistId);
+
+    const items = await db.playlistItem.findMany({
+      where: { playlistId },
+      select: { id: true },
+    });
+    const itemIds = new Set(items.map((item) => item.id));
+
+    if (orderedItemIds.length !== items.length || orderedItemIds.some((itemId) => !itemIds.has(itemId))) {
+      throw new Error("Invalid playlist reorder payload.");
+    }
+
     // Perform sequentially to avoid unique constraint violations
     // In schema, @@unique([playlistId, position]) is set. To safely reorder without violations:
     // First, map them to negative positions temporarily.
@@ -174,6 +198,7 @@ export async function duplicatePlaylistAction(playlistId: string) {
  */
 export async function archivePlaylistAction(playlistId: string) {
   try {
+    await requirePlaylistById(playlistId);
     await db.playlist.update({
       where: { id: playlistId },
       data: {

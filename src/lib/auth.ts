@@ -20,6 +20,7 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
+    disableSignUp: process.env.ALLOW_PUBLIC_SIGNUP !== "true",
   },
   // Set custom user fields if any. Better Auth automatically manages role
   // because we have "role" String? in AuthUser.

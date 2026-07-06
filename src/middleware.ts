@@ -2,16 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  const publicSignupEnabled = process.env.ALLOW_PUBLIC_SIGNUP === "true";
 
   // Paths that do not require authentication
   if (
     path.startsWith("/login") ||
-    path.startsWith("/signup") ||
+    (path.startsWith("/signup") && publicSignupEnabled) ||
     path.startsWith("/api/auth") ||
     path.startsWith("/_next") ||
     path === "/favicon.ico"
   ) {
     return NextResponse.next();
+  }
+
+  if (path.startsWith("/signup") && !publicSignupEnabled) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   try {
@@ -42,6 +47,6 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Match all dashboard pages and custom APIs
-    "/((?!_next/static|_next/image|favicon.ico|api/auth).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/auth|api/media/upload|api/media/file).*)",
   ],
 };

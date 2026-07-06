@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { requireChannelById, requirePlaylistById, requireStreamById, assertSameChannel } from "@/lib/auth-guard";
 import { createYoutubeLiveStream } from "@/lib/youtube";
 import { revalidatePath } from "next/cache";
 
@@ -18,11 +19,9 @@ interface ScheduleParams {
 export async function scheduleStreamAction(params: ScheduleParams) {
   try {
     // 1. Resolve channel status
-    const channel = await db.channel.findUnique({
-      where: { id: params.channelId },
-    });
-
-    if (!channel) throw new Error("Channel context not found.");
+    const channel = await requireChannelById(params.channelId);
+    const playlist = await requirePlaylistById(params.playlistId);
+    assertSameChannel(playlist.channelId, params.channelId, "Playlist");
 
     // If channel is connected, we can attempt creating the broadcast on YouTube API
     let youtubeBroadcastId = null;
@@ -74,6 +73,7 @@ export async function scheduleStreamAction(params: ScheduleParams) {
  */
 export async function cancelStreamAction(streamId: string) {
   try {
+    await requireStreamById(streamId);
     await db.stream.update({
       where: { id: streamId },
       data: { status: "CANCELLED" },
@@ -91,8 +91,7 @@ export async function cancelStreamAction(streamId: string) {
  */
 export async function duplicateStreamAction(streamId: string, newStartTime: Date) {
   try {
-    const src = await db.stream.findUnique({ where: { id: streamId } });
-    if (!src) throw new Error("Source stream not found.");
+    const src = await requireStreamById(streamId);
 
     await db.stream.create({
       data: {

@@ -1,6 +1,11 @@
 "use server";
 
 import { db } from "@/lib/db";
+import {
+  assertSameChannel,
+  requireChannelById,
+  requireMediaById,
+} from "@/lib/auth-guard";
 import { uploadYoutubeVideo, uploadYoutubeThumbnail } from "@/lib/youtube";
 import { revalidatePath } from "next/cache";
 
@@ -22,6 +27,16 @@ interface PublishParams {
  * Handle YouTube video uploading and publishing flow
  */
 export async function publishVideoAction(params: PublishParams) {
+  await requireChannelById(params.channelId);
+
+  const media = await requireMediaById(params.mediaId);
+  assertSameChannel(media.channelId, params.channelId, "Media");
+
+  if (params.thumbnailMediaId) {
+    const thumbnail = await requireMediaById(params.thumbnailMediaId);
+    assertSameChannel(thumbnail.channelId, params.channelId, "Thumbnail");
+  }
+
   // Create YouTubeUpload record in DB as UPLOADING
   const uploadRecord = await db.youTubeUpload.create({
     data: {
@@ -41,14 +56,6 @@ export async function publishVideoAction(params: PublishParams) {
   });
 
   try {
-    const media = await db.media.findUnique({
-      where: { id: params.mediaId },
-    });
-
-    if (!media) {
-      throw new Error("Source media asset not found.");
-    }
-
     revalidatePath("/publishing");
     revalidatePath("/");
 
@@ -69,12 +76,8 @@ export async function publishVideoAction(params: PublishParams) {
 
     // 2. Upload thumbnail if selected
     if (params.thumbnailMediaId) {
-      const thumb = await db.media.findUnique({
-        where: { id: params.thumbnailMediaId },
-      });
-      if (thumb) {
-        await uploadYoutubeThumbnail(params.channelId, youtubeVideoId, thumb.storagePath);
-      }
+      const thumb = await requireMediaById(params.thumbnailMediaId);
+      await uploadYoutubeThumbnail(params.channelId, youtubeVideoId, thumb.storagePath);
     }
 
     // 3. Mark as PUBLISHED in DB

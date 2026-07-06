@@ -19,6 +19,11 @@ enum ChannelStatus {
   ERROR
 }
 
+enum ChannelMemberRole {
+  MANAGER
+  OPERATOR
+}
+
 enum MediaType {
   VIDEO
   AUDIO
@@ -112,6 +117,7 @@ model AuthUser {
   role          String?       @default("operator")
   authsessions  AuthSession[]
   authaccounts  AuthAccount[]
+  channelMembers ChannelMember[]
 
   @@unique([email])
   @@map("AuthUser")
@@ -210,9 +216,25 @@ model Channel {
   streams               Stream[]
   comments              Comment[]
   notifications         Notification[]
+  members               ChannelMember[]
 
   @@index([status])
   @@map("channels")
+}
+
+model ChannelMember {
+  id        String            @id @default(cuid())
+  channelId String
+  userId    String
+  role      ChannelMemberRole @default(OPERATOR)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  channel   Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      AuthUser          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([userId])
+  @@map("channel_members")
 }
 
 model Folder {
@@ -264,6 +286,7 @@ model Media {
   uploadThumbnails    YouTubeUpload[] @relation("UploadThumbnail")
   playlistItems       PlaylistItem[]
   presetThumbnails    StreamPreset[]  @relation("PresetThumbnail")
+  streamThumbnails    Stream[]        @relation("StreamThumbnail")
   activeStreams       Stream[]        @relation("ActiveStreamMedia")
   ffmpegLogs          FfmpegLog[]
 
@@ -408,6 +431,8 @@ model Stream {
   youtubeBroadcastId    String?      @unique
   youtubeLiveStreamId   String?      @unique
   streamKeyOverride     String?
+  thumbnailMediaId      String?
+  categoryId            String?
   scheduledStartAt      DateTime
   scheduledEndAt        DateTime?
   actualStartAt         DateTime?
@@ -425,6 +450,7 @@ model Stream {
   playlist              Playlist?    @relation(fields: [playlistId], references: [id], onDelete: SetNull)
   preset                StreamPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
   createdBy             User?        @relation("StreamCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  thumbnailMedia        Media?       @relation("StreamThumbnail", fields: [thumbnailMediaId], references: [id], onDelete: SetNull)
   currentMedia          Media?       @relation("ActiveStreamMedia", fields: [currentMediaId], references: [id], onDelete: SetNull)
   ffmpegLogs            FfmpegLog[]
 

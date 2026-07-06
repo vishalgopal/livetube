@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { FolderPlus, Folder, FileVideo, Music, Image as ImageIcon, Search, Trash2, Edit, Move, ExternalLink } from "lucide-react";
+import { getActiveChannelContext } from "@/lib/channel-access";
+import { FolderPlus, Folder, FileVideo, Music, Image as ImageIcon, Trash2, ExternalLink } from "lucide-react";
 import { createFolderAction, deleteMediaAction, renameMediaAction } from "@/app/actions/media";
 import MediaUploadArea from "@/components/media-upload-area";
 
@@ -10,14 +10,7 @@ export default async function MediaPage({
 }: {
   searchParams: Promise<{ folderId?: string }>;
 }) {
-  const cookieStore = await cookies();
-  const selectedSlug = cookieStore.get("selected_channel_slug")?.value;
-
-  const channels = await db.channel.findMany({ orderBy: { name: "asc" } });
-  let activeChannel = channels.find((c) => c.slug === selectedSlug);
-  if (!activeChannel && channels.length > 0) {
-    activeChannel = channels[0];
-  }
+  const { activeChannel } = await getActiveChannelContext();
 
   if (!activeChannel) {
     return <div className="text-mute">No channel selected.</div>;
@@ -197,6 +190,7 @@ export default async function MediaPage({
                       : ImageIcon;
                   
                   const isImage = media.type === "IMAGE";
+                  const mediaUrl = `/api/media/file/${media.id}` as const;
 
                   return (
                     <div
@@ -204,7 +198,16 @@ export default async function MediaPage({
                       className="border border-hairline rounded-xl bg-canvas overflow-hidden flex flex-col group relative"
                     >
                       <div className="aspect-video bg-canvas-soft-2 relative flex items-center justify-center border-b border-hairline">
-                        <Icon className="w-8 h-8 text-mute" />
+                        {isImage ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={mediaUrl}
+                            alt={media.title}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <Icon className="w-8 h-8 text-mute" />
+                        )}
                         
                         {media.durationSeconds && (
                           <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/85 text-[10px] text-white font-mono">
@@ -220,7 +223,15 @@ export default async function MediaPage({
                         </span>
                         <div className="flex items-center justify-between text-[10px] font-mono text-mute">
                           <span>{parseFloat((Number(media.sizeBytes) / 1024 / 1024).toFixed(1))} MB</span>
-                          <span className="uppercase">{media.extension}</span>
+                          <a
+                            href={mediaUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 uppercase hover:text-ink"
+                          >
+                            {media.extension}
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
                         </div>
                       </div>
 

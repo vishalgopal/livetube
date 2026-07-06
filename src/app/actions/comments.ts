@@ -1,6 +1,11 @@
 "use server";
 
 import { db } from "@/lib/db";
+import {
+  assertSameChannel,
+  requireChannelById,
+  requireCommentById,
+} from "@/lib/auth-guard";
 import { fetchYoutubeComments, replyToYoutubeComment, deleteYoutubeComment } from "@/lib/youtube";
 import { revalidatePath } from "next/cache";
 
@@ -9,6 +14,7 @@ import { revalidatePath } from "next/cache";
  */
 export async function syncCommentsAction(channelId: string) {
   try {
+    await requireChannelById(channelId);
     const rawComments = await fetchYoutubeComments(channelId);
 
     for (const item of rawComments) {
@@ -48,6 +54,9 @@ export async function syncCommentsAction(channelId: string) {
  */
 export async function replyToCommentAction(channelId: string, commentId: string, threadId: string, text: string) {
   try {
+    await requireChannelById(channelId);
+    const comment = await requireCommentById(commentId);
+    assertSameChannel(comment.channelId, channelId, "Comment");
     await replyToYoutubeComment(channelId, threadId, text);
     
     await db.comment.update({
@@ -71,6 +80,9 @@ export async function replyToCommentAction(channelId: string, commentId: string,
  */
 export async function deleteCommentAction(channelId: string, commentId: string, externalId: string) {
   try {
+    await requireChannelById(channelId);
+    const comment = await requireCommentById(commentId);
+    assertSameChannel(comment.channelId, channelId, "Comment");
     await deleteYoutubeComment(channelId, externalId);
 
     await db.comment.update({
@@ -94,6 +106,7 @@ export async function deleteCommentAction(channelId: string, commentId: string, 
  */
 export async function approveCommentAction(commentId: string) {
   try {
+    await requireCommentById(commentId);
     await db.comment.update({
       where: { id: commentId },
       data: {
@@ -115,6 +128,7 @@ export async function approveCommentAction(commentId: string) {
  */
 export async function flagCommentSpamAction(commentId: string) {
   try {
+    await requireCommentById(commentId);
     await db.comment.update({
       where: { id: commentId },
       data: {

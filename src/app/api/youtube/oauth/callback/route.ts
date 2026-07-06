@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { db } from "@/lib/db";
+import { requireChannelBySlug, requireSession } from "@/lib/auth-guard";
 import { getTokensFromCode } from "@/lib/youtube";
 
 export async function GET(request: NextRequest) {
@@ -12,6 +13,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    await requireSession();
+    await requireChannelBySlug(channelSlug);
+
     // Exchange code for tokens
     const tokens = await getTokensFromCode(code);
 

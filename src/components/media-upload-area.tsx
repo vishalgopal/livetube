@@ -14,6 +14,7 @@ interface UploadTask {
   name: string;
   progress: number;
   status: "UPLOADING" | "SUCCESS" | "FAILED";
+  error?: string;
 }
 
 export default function MediaUploadArea({ channelId, folderId }: MediaUploadAreaProps) {
@@ -90,8 +91,22 @@ export default function MediaUploadArea({ channelId, folderId }: MediaUploadArea
             // Refresh server components to display new file
             router.refresh();
           } else {
+            let errorMessage = "Upload failed.";
+            try {
+              const payload = JSON.parse(xhr.responseText || "{}");
+              if (payload?.error) {
+                errorMessage = String(payload.error);
+              }
+            } catch (_) {
+              if (xhr.status === 413) {
+                errorMessage = "Upload rejected because the file exceeds the server or proxy body-size limit.";
+              }
+            }
+
             setUploads((prev) =>
-              prev.map((up) => (up.id === uploadId ? { ...up, status: "FAILED" } : up))
+              prev.map((up) =>
+                up.id === uploadId ? { ...up, status: "FAILED", error: errorMessage } : up
+              )
             );
           }
         }
@@ -164,6 +179,10 @@ export default function MediaUploadArea({ channelId, folderId }: MediaUploadArea
                   <div className="h-1.5 w-full bg-canvas rounded-full overflow-hidden">
                     <div className="h-full bg-primary transition-all duration-150" style={{ width: `${task.progress}%` }} />
                   </div>
+                )}
+
+                {task.status === "FAILED" && task.error && (
+                  <div className="text-[11px] text-error-deep break-words">{task.error}</div>
                 )}
               </div>
             ))}

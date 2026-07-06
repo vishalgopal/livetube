@@ -1,6 +1,13 @@
 "use server";
 
 import { db } from "@/lib/db";
+import {
+  assertSameChannel,
+  requireChannelById,
+  requireFolderById,
+  requireMediaById,
+  requireSession,
+} from "@/lib/auth-guard";
 import { revalidatePath } from "next/cache";
 import fs from "fs";
 
@@ -9,15 +16,15 @@ import fs from "fs";
  */
 export async function createFolderAction(channelId: string, name: string, parentId?: string | null) {
   try {
+    await requireChannelById(channelId);
     const slug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
     
     // Resolve full path
     let folderPath = name;
     if (parentId) {
-      const parent = await db.folder.findUnique({ where: { id: parentId } });
-      if (parent) {
-        folderPath = `${parent.path}/${name}`;
-      }
+      const parent = await requireFolderById(parentId);
+      assertSameChannel(parent.channelId, channelId, "Parent folder");
+      folderPath = `${parent.path}/${name}`;
     }
 
     await db.folder.create({
@@ -42,10 +49,7 @@ export async function createFolderAction(channelId: string, name: string, parent
  */
 export async function deleteMediaAction(mediaId: string) {
   try {
-    const media = await db.media.findUnique({ where: { id: mediaId } });
-    if (!media) {
-      throw new Error("Media not found.");
-    }
+    const media = await requireMediaById(mediaId);
 
     // Delete DB record
     await db.media.delete({ where: { id: mediaId } });
@@ -68,6 +72,7 @@ export async function deleteMediaAction(mediaId: string) {
  */
 export async function renameMediaAction(mediaId: string, newTitle: string) {
   try {
+    await requireMediaById(mediaId);
     await db.media.update({
       where: { id: mediaId },
       data: { title: newTitle },
@@ -84,6 +89,13 @@ export async function renameMediaAction(mediaId: string, newTitle: string) {
  */
 export async function moveMediaAction(mediaId: string, folderId: string | null) {
   try {
+    const media = await requireMediaById(mediaId);
+
+    if (folderId && folderId !== "root") {
+      const folder = await requireFolderById(folderId);
+      assertSameChannel(folder.channelId, media.channelId, "Folder");
+    }
+
     await db.media.update({
       where: { id: mediaId },
       data: { folderId: folderId === "root" ? null : folderId },

@@ -1,47 +1,104 @@
 "use server";
 
-import { ffmpegCoordinator } from "@/lib/ffmpeg-coordinator";
 import { db } from "@/lib/db";
+import { requireStreamById, requireSession } from "@/lib/auth-guard";
 import { revalidatePath } from "next/cache";
+import { completeYoutubeLiveBroadcast } from "@/lib/youtube";
 
 /**
- * Start a stream by ID
+ * Request a stream start. The dedicated worker process picks this up and owns FFmpeg execution.
  */
 export async function startStreamAction(streamId: string) {
   try {
-    await ffmpegCoordinator.startStream(streamId);
+    const stream = await requireStreamById(streamId);
+    if (stream.status === "LIVE" || stream.status === "STARTING") {
+      return;
+    }
+
+    await db.stream.update({
+      where: { id: streamId },
+      data: {
+        status: "STARTING",
+        actualStartAt: new Date(),
+        actualEndAt: null,
+        failureReason: null,
+        ffmpegCommand: null,
+      },
+    });
+
     revalidatePath("/");
+    revalidatePath("/studio");
     revalidatePath("/health");
     revalidatePath("/scheduler");
   } catch (error: any) {
     console.error(`Failed to start stream ${streamId}:`, error);
-    throw new Error(error.message || "Failed to initiate FFmpeg stream.");
+    throw new Error(error.message || "Failed to queue stream start.");
   }
 }
 
 /**
- * Stop an active stream by ID
+ * Request a stream stop. The worker process stops the underlying FFmpeg process.
  */
 export async function stopStreamAction(streamId: string) {
   try {
-    await ffmpegCoordinator.stopStream(streamId);
+    const stream = await requireStreamById(streamId);
+    if (stream.status === "COMPLETED" || stream.status === "CANCELLED" || stream.status === "FAILED") {
+      return;
+    }
+
+    if (stream.youtubeBroadcastId) {
+      try {
+        await completeYoutubeLiveBroadcast(stream.channelId, stream.youtubeBroadcastId);
+      } catch (error: any) {
+        console.error(`Failed to transition YouTube broadcast ${stream.youtubeBroadcastId} to complete:`, error);
+      }
+    }
+
+    await db.stream.update({
+      where: { id: streamId },
+      data: {
+        status: "COMPLETED",
+        actualEndAt: new Date(),
+      },
+    });
+
     revalidatePath("/");
+    revalidatePath("/studio");
     revalidatePath("/health");
     revalidatePath("/scheduler");
   } catch (error: any) {
     console.error(`Failed to stop stream ${streamId}:`, error);
-    throw new Error(error.message || "Failed to terminate FFmpeg stream.");
+    throw new Error(error.message || "Failed to queue stream stop.");
   }
 }
 
 /**
- * Trigger active stream auto-recovery check
+ * Mark stale streams for recovery. The worker process reclaims them on its next poll cycle.
  */
 export async function runAutoRecoveryAction() {
   try {
-    await ffmpegCoordinator.recoverActiveStreams();
+    await requireSession();
+
+    const staleBefore = new Date(Date.now() - 60 * 1000);
+    await db.stream.updateMany({
+      where: {
+        status: { in: ["LIVE", "STARTING"] },
+        OR: [
+          { lastHeartbeatAt: null },
+          { lastHeartbeatAt: { lt: staleBefore } },
+        ],
+      },
+      data: {
+        status: "STARTING",
+        ffmpegCommand: null,
+        failureReason: "Manual recovery requested by operator.",
+      },
+    });
+
     revalidatePath("/");
+    revalidatePath("/studio");
     revalidatePath("/health");
+    revalidatePath("/scheduler");
   } catch (error: any) {
     console.error("Auto-recovery execution failed:", error);
     throw new Error(error.message || "Auto-recovery failed.");

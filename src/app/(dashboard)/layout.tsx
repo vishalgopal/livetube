@@ -1,18 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { headers, cookies } from "next/headers";
+import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { getSessionUserRole } from "@/lib/auth-guard";
+import { getActiveChannelContext } from "@/lib/channel-access";
 import ChannelSwitcher from "@/components/channel-switcher";
+import LogoutButton from "@/components/logout-button";
 import {
   LayoutDashboard,
   FolderOpen,
-  ListMusic,
-  BrainCircuit,
-  UploadCloud,
-  Calendar,
-  MessageSquare,
-  Activity,
+  PlugZap,
+  Radio,
   User,
 } from "lucide-react";
 
@@ -29,30 +27,15 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  // Fetch channels to pass to switcher
-  const channels = await db.channel.findMany({
-    orderBy: { name: "asc" },
-  });
-
-  const cookieStore = await cookies();
-  const selectedSlug = cookieStore.get("selected_channel_slug")?.value;
-
-  // Resolve active channel context
-  let activeChannel = channels.find((c) => c.slug === selectedSlug);
-  if (!activeChannel && channels.length > 0) {
-    activeChannel = channels[0];
-  }
+  const { channels, activeChannel } = await getActiveChannelContext();
 
   const navLinks = [
     { label: "Overview", href: "/", icon: LayoutDashboard },
+    { label: "Channels", href: "/channels", icon: PlugZap },
     { label: "Media Library", href: "/media", icon: FolderOpen },
-    { label: "Playlists", href: "/playlists", icon: ListMusic },
-    { label: "AI Templates", href: "/ai-templates", icon: BrainCircuit },
-    { label: "Publishing", href: "/publishing", icon: UploadCloud },
-    { label: "Scheduler", href: "/scheduler", icon: Calendar },
-    { label: "Moderation", href: "/moderation", icon: MessageSquare },
-    { label: "System Health", href: "/health", icon: Activity },
+    { label: "Studio", href: "/studio", icon: Radio },
   ];
+  const userRole = await getSessionUserRole();
 
   return (
     <div className="flex h-full min-h-screen bg-canvas-soft text-ink overflow-hidden">
@@ -124,27 +107,11 @@ export default async function DashboardLayout({
                 {session.user.name}
               </span>
               <span className="text-[10px] text-mute truncate capitalize font-mono">
-                {(session.user as any).role || "Operator"}
+                {userRole}
               </span>
             </div>
           </div>
-          <button
-            title="Sign Out"
-            onClick={async () => {
-              "use server";
-              // We'll call the signout logic or redirect
-              // To handle logout client-side, we normally use the Better Auth client.
-              // We can render a client side button or handle it in a form.
-            }}
-            className="p-1.5 rounded-md hover:bg-canvas-soft text-mute hover:text-error transition-colors cursor-pointer"
-          >
-            {/* Direct forms or client wrapper handles trigger. Let's make this simple by using a client-side wrapper in future or just simple form action */}
-            <form action="/api/auth/sign-out" method="POST">
-              <button type="submit" className="cursor-pointer">
-                <LogOutButton />
-              </button>
-            </form>
-          </button>
+          <LogoutButton />
         </div>
       </aside>
 
@@ -174,26 +141,5 @@ export default async function DashboardLayout({
         </div>
       </main>
     </div>
-  );
-}
-
-function LogOutButton() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="w-4 h-4"
-    >
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" x2="9" y1="12" y2="12" />
-    </svg>
   );
 }

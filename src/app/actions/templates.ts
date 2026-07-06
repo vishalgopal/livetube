@@ -2,6 +2,11 @@
 
 import { db } from "@/lib/db";
 import { generateYoutubeMetadata } from "@/lib/ai";
+import {
+  requireAdminSession,
+  requireChannelById,
+  requireTemplateById,
+} from "@/lib/auth-guard";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -18,6 +23,7 @@ export async function createTemplateAction(
   ctaText?: string
 ) {
   try {
+    await requireChannelById(channelId);
     const slug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
 
     await db.aiTemplate.create({
@@ -46,8 +52,10 @@ export async function createTemplateAction(
  */
 export async function duplicateTemplateAction(templateId: string) {
   try {
-    const src = await db.aiTemplate.findUnique({ where: { id: templateId } });
-    if (!src) throw new Error("Template not found.");
+    const src = await requireTemplateById(templateId);
+    if (!src.channelId) {
+      await requireAdminSession();
+    }
 
     const name = `${src.name} (Copy)`;
     const slug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
@@ -78,8 +86,10 @@ export async function duplicateTemplateAction(templateId: string) {
  */
 export async function toggleFavoriteTemplateAction(templateId: string) {
   try {
-    const template = await db.aiTemplate.findUnique({ where: { id: templateId } });
-    if (!template) throw new Error("Template not found.");
+    const template = await requireTemplateById(templateId);
+    if (!template.channelId) {
+      await requireAdminSession();
+    }
 
     await db.aiTemplate.update({
       where: { id: templateId },
@@ -98,6 +108,10 @@ export async function toggleFavoriteTemplateAction(templateId: string) {
  */
 export async function deleteTemplateAction(templateId: string) {
   try {
+    const template = await requireTemplateById(templateId);
+    if (!template.channelId) {
+      await requireAdminSession();
+    }
     await db.aiTemplate.delete({ where: { id: templateId } });
     revalidatePath("/ai-templates");
   } catch (error: any) {
@@ -112,8 +126,7 @@ export async function deleteTemplateAction(templateId: string) {
  */
 export async function generateMetadataAction(topic: string, templateId: string) {
   try {
-    const template = await db.aiTemplate.findUnique({ where: { id: templateId } });
-    if (!template) throw new Error("Template not found.");
+    const template = await requireTemplateById(templateId);
 
     // Call AI utility
     const result = await generateYoutubeMetadata(

@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { getActiveChannelContext } from "@/lib/channel-access";
 import {
   ListMusic,
   Plus,
@@ -28,14 +28,7 @@ export default async function PlaylistsPage({
 }: {
   searchParams: Promise<{ playlistId?: string }>;
 }) {
-  const cookieStore = await cookies();
-  const selectedSlug = cookieStore.get("selected_channel_slug")?.value;
-
-  const channels = await db.channel.findMany({ orderBy: { name: "asc" } });
-  let activeChannel = channels.find((c) => c.slug === selectedSlug);
-  if (!activeChannel && channels.length > 0) {
-    activeChannel = channels[0];
-  }
+  const { activeChannel } = await getActiveChannelContext();
 
   if (!activeChannel) {
     return <div className="text-mute">No channel context found.</div>;

@@ -1,17 +1,10 @@
-import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { getActiveChannelContext } from "@/lib/channel-access";
 import { CheckCircle2, AlertCircle, RefreshCw, Film } from "lucide-react";
 import PublishingForm from "@/components/publishing-form";
 
 export default async function PublishingPage() {
-  const cookieStore = await cookies();
-  const selectedSlug = cookieStore.get("selected_channel_slug")?.value;
-
-  const channels = await db.channel.findMany({ orderBy: { name: "asc" } });
-  let activeChannel = channels.find((c) => c.slug === selectedSlug);
-  if (!activeChannel && channels.length > 0) {
-    activeChannel = channels[0];
-  }
+  const { activeChannel } = await getActiveChannelContext();
 
   if (!activeChannel) {
     return <div className="text-mute">No channel selected.</div>;

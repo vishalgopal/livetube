@@ -1,18 +1,11 @@
-import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { getActiveChannelContext } from "@/lib/channel-access";
 import { Calendar, Plus, Play, Trash2, RotateCw, CheckCircle2, AlertCircle, Clock, Copy } from "lucide-react";
 import { scheduleStreamAction, cancelStreamAction, duplicateStreamAction } from "@/app/actions/scheduler";
 import { startStreamAction } from "@/app/actions/streams";
 
 export default async function SchedulerPage() {
-  const cookieStore = await cookies();
-  const selectedSlug = cookieStore.get("selected_channel_slug")?.value;
-
-  const channels = await db.channel.findMany({ orderBy: { name: "asc" } });
-  let activeChannel = channels.find((c) => c.slug === selectedSlug);
-  if (!activeChannel && channels.length > 0) {
-    activeChannel = channels[0];
-  }
+  const { activeChannel } = await getActiveChannelContext();
 
   if (!activeChannel) {
     return <div className="text-mute">No channel selected.</div>;
