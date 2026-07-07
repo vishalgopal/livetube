@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: livetube-app:latest
     environment:
       NODE_ENV: production
       APP_ROLE: web
@@ -31,14 +32,10 @@ services:
       STREAM_CLAIM_TIMEOUT_MS: ${STREAM_CLAIM_TIMEOUT_MS:-120000}
     volumes:
       - app_storage:/app/storage
-    ports:
-      - "3000:3000"
     restart: unless-stopped
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: livetube-app:latest
     environment:
       NODE_ENV: production
       APP_ROLE: worker
@@ -57,3 +54,4 @@ services:
 
 volumes:
   app_storage:
+
